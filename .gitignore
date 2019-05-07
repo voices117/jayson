@@ -34,3 +34,4 @@
 # Others
 *.sublime-project
 *.sublime-workspace
+*.code-workspace
