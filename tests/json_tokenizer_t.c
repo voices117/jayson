@@ -32,6 +32,12 @@
         ASSERT_TRUE( expected_value - 0.00001 < ( token ).value.fraction );\
     } while(0)
 
+#define ASSERT_TOKEN_BOOLEAN( expected_value, token ) \
+    do { \
+        ASSERT_EQ( json_token_boolean, ( token ).type ); \
+        ASSERT_EQ( expected_value, token.value.boolean );\
+    } while(0)
+
 
 struct buffer {
     const char *data;
@@ -370,6 +376,82 @@ TEST( fraction ) {
     }
 }
 
+TEST( boolean ) {
+    /* valid */
+    {
+        CSTR_STREAM( s, "true" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_BOOLEAN( true, token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "false" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_BOOLEAN( false, token );
+
+        tokenizer_release( &tokenizer );
+    }
+    /* invalid */
+    {
+        CSTR_STREAM( s, "ttrue" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "treu" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "truue" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "flase" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+}
 
 TEST( Mix ) {
     const char *input = "{, :   [\"this\", \"is\", \"a\", \n \"test\",   123, 0] }:::";

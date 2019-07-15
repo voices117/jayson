@@ -4,10 +4,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include "json_types.h"
 #include "stream.h"
 
-typedef double fraction_t;
 
 /** JSON token type. */
 typedef enum {
@@ -19,6 +18,7 @@ typedef enum {
     json_token_string,
     json_token_integer,
     json_token_fraction,
+    json_token_boolean,
     json_token_colon,
     json_token_error,
     json_token_none,
@@ -33,8 +33,9 @@ typedef struct {
     /** Token value. */
     union {
         char *string;
-        long integer;
+        integer_t integer;
         fraction_t fraction;
+        bool boolean;
         const char *error_msg;
     } value;
 } json_token_t;
