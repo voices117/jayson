@@ -1,6 +1,6 @@
 # makefile parameters
 SRCDIR      := src
-LIBSDIR     :=
+LIBSDIR     := libs
 TESTDIR     := tests
 BUILDDIR    := int
 TARGETDIR   := target
