@@ -47,6 +47,13 @@ typedef struct {
 
     /** Internal buffer that holds data obtained from the input callback. */
     uint8_t buffer[1024];
+
+    /** Number of new line characters read so far. */
+    int line;
+
+    /** Number of characters read from the last new line character. */
+    int column;
+
 } stream_t;
 
 

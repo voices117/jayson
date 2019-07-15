@@ -34,6 +34,12 @@ bool stream_get( stream_t *s, uint8_t *c ) {
 
     *c = s->buffer[s->bytes_read++];
     s->bytes_left -= 1;
+    if( *c == '\n' ) {
+        s->line += 1;
+        s->column = 0;
+    } else {
+        s->column += 1;
+    }
     return true;
 }
 
