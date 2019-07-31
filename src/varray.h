@@ -28,6 +28,7 @@ typedef struct
 #define varray_cap( ptr ) ( _header( ptr )->cap )
 #define varray_push( ptr, elem ) ( _resize_if_req( ptr ), (ptr)[varray_len( ptr )++] = (elem) )
 #define varray_pop( ptr ) ( (ptr)[--varray_len( ptr )] )
+#define varray_last( ptr ) ( (ptr)[varray_len( ptr ) - 1] )
 
 
 static inline void *_varray_resize( void *ptr, size_t n, size_t elem_size ) {

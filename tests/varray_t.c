@@ -34,6 +34,7 @@ TEST( int ) {
     for( size_t i = 0; i < 1500; i++ ) {
         varray_push( a, i * 2 );
 
+        ASSERT_EQ( i * 2, varray_last( a ) );
         ASSERT_EQ( i * 2, a[i] );
         ASSERT_EQ( i + 1, varray_len( a ) );
         ASSERT_EQ( MAX( initial_cap, _next_pow_2( i + 1 ) ), varray_cap( a ) );
@@ -55,6 +56,7 @@ TEST( struct ) {
         struct test elem = { .c = '0' + i % 70, .i = i };
         varray_push( a, elem );
 
+        ASSERT_EQ( i, varray_last( a ).i );
         ASSERT_EQ( i + 1, varray_len( a ) );
         ASSERT_EQ( MAX( initial_cap, _next_pow_2( i + 1 ) ), varray_cap( a ) );
     }
