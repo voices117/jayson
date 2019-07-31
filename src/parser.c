@@ -69,18 +69,20 @@ typedef enum {
 typedef struct {
     /** Stack of container types (var array). */
     container_type_t *container_types;
+    /** Stack of JSON tokens (var array). */
+    json_token_t *tokens;
     /** Handler. */
     json_handler_t *handler;
     /** Input stream. */
     stream_t *stream;
-    /** Current JSON token. */
-    json_token_t token;
+    /** JSON tokenizer. */
+    tokenizer_t *tokenizer;
     /** Error message (or \c NULL is no error). */
     const char *error;
 } fsm_ctx_t;
 
 
-static bool _run_fsm( fsm_ctx_t *parser_ctx, stream_t *stream );
+static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer );
 
 static bool _action_object_start( fsm_ctx_t *ctx, char c );
 static bool _action_object_close( fsm_ctx_t *ctx, char c );
@@ -122,30 +124,34 @@ static const state_t _states[state_id_last] = {
     STATE( init,
         TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( object_key, object_open, _action_object_start ),
-        TRANSITION( array,      array_open, _action_array_start ),
-        TRANSITION( end,        string, _action_string ),
-        TRANSITION( end,        integer, _action_integer ),
-        TRANSITION( end,        fraction, _action_fraction ),
-        TRANSITION( end,        boolean, _action_boolean ),
+        TRANSITION( array,      array_open,  _action_array_start ),
+        TRANSITION( end,        string,      _action_string ),
+        TRANSITION( end,        integer,     _action_integer ),
+        TRANSITION( end,        fraction,    _action_fraction ),
+        TRANSITION( end,        boolean,     _action_boolean ),
+        TRANSITION( error,      eof,         _action_eof_unexpected ),
     ),
     STATE( object_key,
         TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( end,              object_close, _action_object_close ),
         TRANSITION( object_after_key, string,       _action_object_key ),
+        TRANSITION( error,            eof,          _action_eof_unexpected ),
     ),
     STATE( object_after_key,
         TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( object_after_value, colon, _action_recursive_parse ),
+        TRANSITION( error,              eof,   _action_eof_unexpected ),
     ),
     STATE( object_after_value,
         TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( object_key, comma, NULL ),
         TRANSITION( end,        object_close, _action_object_close ),
+        TRANSITION( error,      eof,          _action_eof_unexpected ),
     ),
     STATE( array,
         TRANSITION_EOF( error, _action_eof_unexpected ),
-        TRANSITION( end, array_close, _action_array_close ),
-        TRANSITION_ANY( end, NULL ),
+        TRANSITION( end,   array_close, _action_array_close ),
+        TRANSITION( error, eof,         _action_eof_unexpected ),
     ),
 };
 
@@ -170,7 +176,7 @@ static bool _action_object_close( fsm_ctx_t *ctx, char c ) {
 }
 
 static bool _action_object_key( fsm_ctx_t *ctx, char c ) {
-    return ctx->handler->object_key( ctx->handler->ctx, ctx->token.value.string );
+    return ctx->handler->object_key( ctx->handler->ctx, varray_last( ctx->tokens ).value.string );
 }
 
 static bool _action_array_start( fsm_ctx_t *ctx, char c ) {
@@ -193,24 +199,24 @@ static bool _action_array_close( fsm_ctx_t *ctx, char c ) {
 }
 
 static bool _action_string( fsm_ctx_t *ctx, char c ) {
-    return ctx->handler->string( ctx->handler->ctx, ctx->token.value.string );
+    return ctx->handler->string( ctx->handler->ctx, varray_last( ctx->tokens ).value.string );
 }
 
 static bool _action_integer( fsm_ctx_t *ctx, char c ) {
-    return ctx->handler->integer( ctx->handler->ctx, ctx->token.value.integer );
+    return ctx->handler->integer( ctx->handler->ctx, varray_last( ctx->tokens ).value.integer );
 }
 
 static bool _action_fraction( fsm_ctx_t *ctx, char c ) {
-    return ctx->handler->fraction( ctx->handler->ctx, ctx->token.value.fraction );
+    return ctx->handler->fraction( ctx->handler->ctx, varray_last( ctx->tokens ).value.fraction );
 }
 
 static bool _action_boolean( fsm_ctx_t *ctx, char c ) {
-    return ctx->handler->boolean( ctx->handler->ctx, ctx->token.value.boolean );
+    return ctx->handler->boolean( ctx->handler->ctx, varray_last( ctx->tokens ).value.boolean );
 }
 
 static bool _action_recursive_parse( fsm_ctx_t *ctx, char c ) {
     /* runs the FSM recursively to parse any type of JSON element */
-    return _run_fsm( ctx, ctx->stream );
+    return _run_fsm( ctx, ctx->tokenizer );
 }
 
 static bool _action_eof_unexpected( fsm_ctx_t *ctx ) {
@@ -218,43 +224,37 @@ static bool _action_eof_unexpected( fsm_ctx_t *ctx ) {
     return true;
 }
 
-static bool _run_fsm( fsm_ctx_t *parser_ctx, stream_t *stream ) {
+static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer ) {
     state_id_t fsm_state = parser_state_init;
 
-    /* initializes the tokenizer */
-    tokenizer_t tokenizer;
-    tokenizer_init( &tokenizer, stream );
+    json_token_type_t type;
+    do {
+        varray_push( parser_ctx->tokens, tokenizer_get_next( tokenizer ) );
+        type = varray_last( parser_ctx->tokens ).type;
 
-    parser_ctx->token = tokenizer_get_next( &tokenizer );
-    while( parser_ctx->token.type != json_token_error && parser_ctx->token.type != json_token_eof ) {
-        fsm_state = fsm_step( &_states[fsm_state], parser_ctx->token.type, fsm_state, parser_ctx );
+        fsm_state = fsm_step( &_states[fsm_state], type, fsm_state, parser_ctx );
         switch( fsm_state ) {
             case FSM_ERROR_NO_MATCH:
                 parser_ctx->error = "Unexpected token";
-                return false;
+                goto error;
             case FSM_ERROR_TRANSITION:
             case FSM_ERROR_STATE:
                 assert( parser_ctx->error != NULL );
-                return false;
+                goto error;
             case FSM_ERROR_STREAM:
                 parser_ctx->error = "Input error";
-                token_release( &parser_ctx->token );
-                return false;
+                goto error;
             case FSM_END_STATE:
-                return true;
+            default:
+                break;
         }
+        token_release( &varray_pop( parser_ctx->tokens ) );
+    } while( type != json_token_error && fsm_state != FSM_END_STATE );
+    return ( fsm_state == FSM_END_STATE );
 
-        parser_ctx->token = tokenizer_get_next( &tokenizer );
-    }
-
-    /* executes the end of file transition */
-    if( _states[fsm_state].transition_eof.action ) {
-        if( !_states[fsm_state].transition_eof.action( parser_ctx ) ) {
-            return false;
-        }
-    }
-
-    return ( parser_ctx->token.type == json_token_eof );
+error:
+    token_release( &varray_pop( parser_ctx->tokens ) );
+    return false;
 }
 
 
@@ -263,19 +263,27 @@ bool json_parse( json_handler_t *handler, json_read_cb_t read_cb, void *read_cb_
     stream_t stream;
     STREAM_INIT( &stream, read_cb, read_cb_ctx );    
 
+    /* initializes the tokenizer */
+    tokenizer_t tokenizer;
+    tokenizer_init( &tokenizer, &stream );
+
     /* initializes the parser context */
     fsm_ctx_t parser_ctx;
     varray_init( parser_ctx.container_types, 5 );
+    varray_init( parser_ctx.tokens, 5 );
     parser_ctx.handler = handler;
     parser_ctx.stream = &stream;
+    parser_ctx.tokenizer = &tokenizer;
 
     /* runs the JSON FSM */
-    bool success = _run_fsm( &parser_ctx, &stream );
+    bool success = _run_fsm( &parser_ctx, &tokenizer );
     if( !success ) {
         assert( parser_ctx.error != NULL );
         parser_ctx.handler->error( parser_ctx.handler->ctx, parser_ctx.error, stream.line + 1, stream.column + 1 );
     }
 
+    tokenizer_release( &tokenizer );
     varray_release( parser_ctx.container_types );
+    varray_release( parser_ctx.tokens );
     return success;
 }

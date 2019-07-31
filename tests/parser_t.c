@@ -55,6 +55,7 @@ struct buffer {
             printf( "[ PARSE ERROR ] %s at %d:%d\n", thc.error_msg, thc.error_line, thc.error_column ); \
             ASSERT_FALSE( true ); \
         } \
+        varray_release( thc.events ); \
     } while( 0 )
 
 
@@ -223,5 +224,6 @@ TEST( Error ) {
         BUFFER( "{}" );
         ASSERT_TRUE( json_parse( &handler, _read_from_buffer, &buffer ) );
         ASSERT_EVENT_SEQUENCE( thc.events, event_object_start, event_object_end );
+        varray_release( thc.events );
     }
 }
