@@ -8,7 +8,7 @@ SRCEXT      := c
 
 # compiler parameters
 CC          := gcc
-CFLAGS      := -g3 -std=c99 -Wall -Wpedantic -Werror -Wno-unused-function
+CFLAGS      := -std=c99 -Wall -Wpedantic -Werror -Wno-unused-function
 LIB         :=
 INC         := /usr/local/include
 DEFINES     :=
@@ -17,6 +17,12 @@ DEFINES     :=
 #---------------------------------------------------------------------------------
 # DO NOT EDIT BELOW THIS LINE
 #---------------------------------------------------------------------------------
+
+ifneq ($(DEBUG),)
+	CFLAGS += -ggdb
+else
+	CFLAGS += -O3
+endif
 
 # sets the src directory in the VPATH
 VPATH := $(SRCDIR)
