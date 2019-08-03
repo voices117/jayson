@@ -22,6 +22,9 @@ typedef enum {
     state_id_escape,
     state_id_false,
     state_id_true,
+    state_id_null_start,
+    state_id_null_read_l,
+    state_id_null_end,
 
     state_id_last
 } fsm_state_id_t;
@@ -105,6 +108,7 @@ static bool _action_token_false( struct fsm_ctx *ctx, char c );
 static bool _action_boolean_true_init( struct fsm_ctx *ctx, char c );
 static bool _action_check_true( struct fsm_ctx *ctx, char c );
 static bool _action_token_true( struct fsm_ctx *ctx, char c );
+static bool _action_token_null( struct fsm_ctx *ctx, char c );
 
 /**
  * FSM states.
@@ -123,6 +127,7 @@ static const state_t _states[state_id_last] = {
         TRANSITION( numeric, "0123456789", _action_numeric_init ),
         TRANSITION( false, "f", _action_boolean_false_init ),
         TRANSITION( true, "t", _action_boolean_true_init ),
+        TRANSITION( null_start, "n", NULL ),
     ),
     STATE( string,
         TRANSITION_EOF( error, _action_error_eof ),
@@ -160,6 +165,18 @@ static const state_t _states[state_id_last] = {
         TRANSITION_EOF( error, _action_error_eof ),
         TRANSITION( false, "als", _action_check_false ),
         TRANSITION( end,   "e", _action_token_false ),
+    ),
+    STATE( null_start,
+        TRANSITION_EOF( error, _action_error_eof ),
+        TRANSITION( null_read_l, "u", NULL ),
+    ),
+    STATE( null_read_l,
+        TRANSITION_EOF( error, _action_error_eof ),
+        TRANSITION( null_end, "l", NULL ),
+    ),
+    STATE( null_end,
+        TRANSITION_EOF( error, _action_error_eof ),
+        TRANSITION( end, "l", _action_token_null ),
     ),
 };
 
@@ -375,6 +392,11 @@ static bool _action_token_true( struct fsm_ctx *ctx, char c ) {
     return true;
 }
 
+static bool _action_token_null( struct fsm_ctx *ctx, char c ) {
+    ctx->token.type = json_token_null;
+    return true;
+}
+
 
 void tokenizer_init( tokenizer_t *t, stream_t *stream ) {
     t->stream = stream;
@@ -427,6 +449,7 @@ void token_release( json_token_t *token ) {
         case json_token_colon:
         case json_token_error:
         case json_token_none:
+        case json_token_null:
         case json_token_eof:
             break;
         case json_token_string:

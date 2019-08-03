@@ -38,6 +38,11 @@
         ASSERT_EQ( expected_value, token.value.boolean );\
     } while(0)
 
+#define ASSERT_TOKEN_NULL( token ) \
+    do { \
+        ASSERT_EQ( json_token_null, ( token ).type ); \
+    } while(0)
+
 
 struct buffer {
     const char *data;
@@ -441,6 +446,59 @@ TEST( boolean ) {
     }
     {
         CSTR_STREAM( s, "flase" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+}
+
+TEST( null ) {
+    /* valid */
+    {
+        CSTR_STREAM( s, "null" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_NULL( token );
+
+        tokenizer_release( &tokenizer );
+    }
+    /* invalid */
+    {
+        CSTR_STREAM( s, "nlul" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected character", token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "nul" );
+
+        json_token_t token;
+        tokenizer_t tokenizer;
+        tokenizer_init( &tokenizer, &s );
+
+        token = tokenizer_get_next( &tokenizer );
+        ASSERT_TOKEN_ERROR( "Unexpected end of file", token );
+
+        tokenizer_release( &tokenizer );
+    }
+    {
+        CSTR_STREAM( s, "nlul" );
 
         json_token_t token;
         tokenizer_t tokenizer;

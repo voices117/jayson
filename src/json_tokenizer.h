@@ -22,6 +22,7 @@ typedef enum {
     json_token_colon,
     json_token_error,
     json_token_none,
+    json_token_null,
     json_token_eof,
 } json_token_type_t;
 
