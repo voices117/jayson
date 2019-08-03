@@ -47,11 +47,14 @@ DEFINES := $(addprefix -D,$(DEFINES))
 
 
 # default: compiles all the binaries
-all: tests
+all: tests tool
 
 # compiles and runs the unit tests
 tests: $(TARGETDIR)/tests
 	./$(TARGETDIR)/tests
+
+# builds an executable that parses JSON
+tool: $(TARGETDIR)/json
 
 # shows usage
 help:
@@ -79,6 +82,11 @@ format:
 	@find src/ -iname *.h -o -iname *.$(SRCEXT) | xargs clang-format -i -style=file
 
 # INTERNAL: builds the binary
+$(TARGETDIR)/json: $(OBJS) tool/main.c | dirs
+	@$(CC) $(CFLAGS) $(INC) $(DEFINES) $^ $(LIB) -o $@
+	@echo "LD $@"
+
+# INTERNAL: builds the test binary
 $(TARGETDIR)/tests: $(TEST_OBJS) | dirs
 	@$(CC) $(CFLAGS) $(INC) $(DEFINES) $^ $(LIB) -o $@
 	@echo "LD $@"
@@ -95,7 +103,7 @@ $(BUILDDIR)/a/%.o: %.$(SRCEXT)
 	@echo "CC $<"
 	@$(CC) $(CFLAGS) $(INC) $(DEFINES) $(LIB) -c -o $@ $<
 
-.PHONY: clean dirs tests all
+.PHONY: clean dirs tests all tool
 
 # includes generated dependency files
 -include $(OBJS:.o=.d)
