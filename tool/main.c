@@ -68,6 +68,11 @@ static bool _default_string_handler( void *ctx, const char *string ) {
     printf( "%s\n", string );
     return true;
 }
+static bool _default_null_handler( void *ctx ) {
+    _print_indentation( ctx );
+    printf( "%s\n", "null" );
+    return true;
+}
 static bool _default_boolean_handler( void *ctx, bool boolean ) {
     _print_indentation( ctx );
     printf( "%s\n", boolean ? "true" : "false" );
@@ -89,6 +94,7 @@ static json_handler_t _get_handler( struct handler_ctx *ctx ) {
                                             _default_integer_handler,
                                             _default_fraction_handler,
                                             _default_string_handler,
+                                            _default_null_handler,
                                             _default_boolean_handler );
 } 
 

@@ -16,6 +16,7 @@
                       _integer, \
                       _fraction, \
                       _string, \
+                      _null, \
                       _boolean ) \
     { \
         .ctx = _ctx, \
@@ -28,6 +29,7 @@
         .integer = _integer, \
         .fraction = _fraction, \
         .string = _string, \
+        .null = _null, \
         .boolean = _boolean \
     }
 
@@ -54,6 +56,8 @@ typedef struct {
     bool ( *fraction )( void *ctx, fraction_t fraction );
     /** Called when a string is parsed. */
     bool ( *string )( void *ctx, const char *string );
+    /** Called when a null is parsed. */
+    bool ( *null )( void *ctx );
     /** Called when a string is parsed. */
     bool ( *boolean )( void *ctx, bool boolean );
 

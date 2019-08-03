@@ -33,6 +33,7 @@ struct buffer {
         _default_integer_handler, \
         _default_fraction_handler, \
         _default_string_handler, \
+        _default_null_handler, \
         _default_boolean_handler )
 
 #define ASSERT_EVENT_SEQUENCE( obtained_varray, ... ) \
@@ -96,6 +97,7 @@ enum parser_event {
     event_fraction,
     event_string,
     event_boolean,
+    event_null,
 };
 
 struct test_handler_ctx {
@@ -160,6 +162,11 @@ static bool _default_string_handler( void *ctx, const char *string ) {
 static bool _default_boolean_handler( void *ctx, bool boolean ) {
     struct test_handler_ctx *thc = ctx;
     varray_push( thc->events, event_boolean );
+    return true;
+}
+static bool _default_null_handler( void *ctx ) {
+    struct test_handler_ctx *thc = ctx;
+    varray_push( thc->events, event_null );
     return true;
 }
 

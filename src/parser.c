@@ -82,6 +82,7 @@ static bool _action_array_close( fsm_ctx_t *ctx, char c );
 static bool _action_string( fsm_ctx_t *ctx, char c );
 static bool _action_integer( fsm_ctx_t *ctx, char c );
 static bool _action_fraction( fsm_ctx_t *ctx, char c );
+static bool _action_null( fsm_ctx_t *ctx, char c );
 static bool _action_boolean( fsm_ctx_t *ctx, char c );
 
 static bool _action_eof_unexpected( fsm_ctx_t *ctx );
@@ -116,6 +117,7 @@ typedef enum {
     TRANSITION( next_state, string,      _action_string ), \
     TRANSITION( next_state, integer,     _action_integer ), \
     TRANSITION( next_state, fraction,    _action_fraction ), \
+    TRANSITION( next_state, null,        _action_null ), \
     TRANSITION( next_state, boolean,     _action_boolean )
 
 static const state_t _states[state_id_last] = {
@@ -230,6 +232,10 @@ static bool _action_integer( fsm_ctx_t *ctx, char c ) {
 
 static bool _action_fraction( fsm_ctx_t *ctx, char c ) {
     return ctx->handler->fraction( ctx->handler->ctx, varray_last( ctx->tokens ).value.fraction );
+}
+
+static bool _action_null( fsm_ctx_t *ctx, char c ) {
+    return ctx->handler->null( ctx->handler->ctx );
 }
 
 static bool _action_boolean( fsm_ctx_t *ctx, char c ) {
