@@ -11,14 +11,12 @@
 /** Defines an entry in the array of states that define the FSM.
  *
  *  @param name State name.
- *  @param _transition_eof Transition that handles the EOF.
  *  @param ... List of transitions that compose the state (see \c TRANSITION).
  */
-#define STATE( name, _transition_eof, ... ) \
+#define STATE( name, ... ) \
     [parser_state_##name] = { \
         .transitions = ( transition_t [] ){ __VA_ARGS__ }, \
         .num_transitions = ASIZE( ( ( transition_t [] ){ __VA_ARGS__ } ) ), \
-        .transition_eof = _transition_eof, \
     }
 
 /** Defines a transition for an FSM state
@@ -48,16 +46,6 @@
         .action = ( transition_action_cb_t )_action, \
     }
 
-/** Defines an EOF transition for an FSM state
- *
- *  @param _next_state Next state if the transition is taken.
- *  @param _action Callback executed when the transition is taken (or \c NULL).
- */
-#define TRANSITION_EOF( _next_state, _action ) \
-    { \
-        .next_state = parser_state_##_next_state, \
-        .action = ( transition_eof_action_cb_t )_action, \
-    }
 
 /** Type of container. */
 typedef enum {
@@ -82,7 +70,7 @@ typedef struct {
 } fsm_ctx_t;
 
 
-static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer );
+static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer, state_id_t fsm_state );
 
 static bool _action_object_start( fsm_ctx_t *ctx, char c );
 static bool _action_object_close( fsm_ctx_t *ctx, char c );
@@ -99,6 +87,8 @@ static bool _action_boolean( fsm_ctx_t *ctx, char c );
 static bool _action_eof_unexpected( fsm_ctx_t *ctx );
 
 static bool _action_recursive_parse( fsm_ctx_t *ctx, char c );
+static bool _action_array_start_recursive( fsm_ctx_t *ctx, char c );
+static bool _action_object_start_recursive( fsm_ctx_t *ctx, char c );
 
 
 /** States defined in the FSM that handles tokens. */
@@ -115,43 +105,56 @@ typedef enum {
     parser_state_object_after_key,
     parser_state_object_after_value,
     parser_state_array,
+    parser_state_array_after_value,
+    parser_state_array_value,
 
     state_id_last
 } parser_state_t;
 
 
+#define ELEMENT( next_state, _array_start_action, _object_start_action ) \
+    TRANSITION( next_state, string,      _action_string ), \
+    TRANSITION( next_state, integer,     _action_integer ), \
+    TRANSITION( next_state, fraction,    _action_fraction ), \
+    TRANSITION( next_state, boolean,     _action_boolean )
+
 static const state_t _states[state_id_last] = {
     STATE( init,
-        TRANSITION_EOF( error, _action_eof_unexpected ),
+        ELEMENT( end, _action_array_start, _action_object_start ),
         TRANSITION( object_key, object_open, _action_object_start ),
         TRANSITION( array,      array_open,  _action_array_start ),
-        TRANSITION( end,        string,      _action_string ),
-        TRANSITION( end,        integer,     _action_integer ),
-        TRANSITION( end,        fraction,    _action_fraction ),
-        TRANSITION( end,        boolean,     _action_boolean ),
         TRANSITION( error,      eof,         _action_eof_unexpected ),
     ),
     STATE( object_key,
-        TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( end,              object_close, _action_object_close ),
         TRANSITION( object_after_key, string,       _action_object_key ),
         TRANSITION( error,            eof,          _action_eof_unexpected ),
     ),
     STATE( object_after_key,
-        TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( object_after_value, colon, _action_recursive_parse ),
         TRANSITION( error,              eof,   _action_eof_unexpected ),
     ),
     STATE( object_after_value,
-        TRANSITION_EOF( error, _action_eof_unexpected ),
         TRANSITION( object_key, comma, NULL ),
         TRANSITION( end,        object_close, _action_object_close ),
         TRANSITION( error,      eof,          _action_eof_unexpected ),
     ),
     STATE( array,
-        TRANSITION_EOF( error, _action_eof_unexpected ),
-        TRANSITION( end,   array_close, _action_array_close ),
-        TRANSITION( error, eof,         _action_eof_unexpected ),
+        ELEMENT( array_after_value, _action_array_start_recursive, _action_object_start_recursive ),
+        TRANSITION( array_after_value, object_open, _action_object_start_recursive ),
+        TRANSITION( array_after_value, array_open,  _action_array_start_recursive ),
+        TRANSITION( end,               array_close, _action_array_close ),
+        TRANSITION( error,             eof,         _action_eof_unexpected ),
+    ),
+    STATE( array_after_value,
+        TRANSITION( array_value, comma,       NULL ),
+        TRANSITION( end,         array_close, _action_array_close ),
+        TRANSITION( error,       eof,         _action_eof_unexpected ),
+    ),
+    STATE( array_value,
+        ELEMENT( array_after_value, _action_array_start_recursive, _action_object_start_recursive ),
+        TRANSITION( array_after_value, object_open, _action_object_start_recursive ),
+        TRANSITION( array_after_value, array_open,  _action_array_start_recursive ),
     ),
 };
 
@@ -180,11 +183,30 @@ static bool _action_object_key( fsm_ctx_t *ctx, char c ) {
 }
 
 static bool _action_array_start( fsm_ctx_t *ctx, char c ) {
-    bool rv = ctx->handler->array_start( ctx->handler->ctx );
-
+    if( !ctx->handler->array_start( ctx->handler->ctx ) ) {
+        return false; 
+    }
     /* pushes the continer into the stack */
     varray_push( ctx->container_types, container_type_array );
-    return rv;
+    return true;
+}
+
+static bool _action_array_start_recursive( fsm_ctx_t *ctx, char c ) {
+    if( !_action_array_start( ctx, c ) ) {
+        return false;
+    }
+
+    /* does a recursive call to parse contained elements */
+    return _run_fsm( ctx, ctx->tokenizer, parser_state_array );
+}
+
+static bool _action_object_start_recursive( fsm_ctx_t *ctx, char c ) {
+    if( !_action_object_start( ctx, c ) ) {
+        return false;
+    }
+
+    /* does a recursive call to parse contained elements */
+    return _run_fsm( ctx, ctx->tokenizer, parser_state_object_key );
 }
 
 static bool _action_array_close( fsm_ctx_t *ctx, char c ) {
@@ -193,7 +215,7 @@ static bool _action_array_close( fsm_ctx_t *ctx, char c ) {
         return false;
     }
 
-    bool rv = ctx->handler->array_end( ctx );
+    bool rv = ctx->handler->array_end( ctx->handler->ctx );
     ( void )varray_pop( ctx->container_types );
     return rv;
 }
@@ -216,7 +238,7 @@ static bool _action_boolean( fsm_ctx_t *ctx, char c ) {
 
 static bool _action_recursive_parse( fsm_ctx_t *ctx, char c ) {
     /* runs the FSM recursively to parse any type of JSON element */
-    return _run_fsm( ctx, ctx->tokenizer );
+    return _run_fsm( ctx, ctx->tokenizer, parser_state_init );
 }
 
 static bool _action_eof_unexpected( fsm_ctx_t *ctx ) {
@@ -224,9 +246,27 @@ static bool _action_eof_unexpected( fsm_ctx_t *ctx ) {
     return true;
 }
 
-static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer ) {
-    state_id_t fsm_state = parser_state_init;
+static bool _step_fsm( fsm_ctx_t *parser_ctx, json_token_type_t type, state_id_t fsm_state ) {
+    fsm_state = fsm_step( &_states[fsm_state], type, fsm_state, parser_ctx );
+    switch( fsm_state ) {
+        case FSM_ERROR_NO_MATCH:
+            parser_ctx->error = "Unexpected token";
+            return false;
+        case FSM_ERROR_TRANSITION:
+        case FSM_ERROR_STATE:
+            assert( parser_ctx->error != NULL );
+            return false;
+        case FSM_ERROR_STREAM:
+            parser_ctx->error = "Input error";
+            return false;
+        case FSM_END_STATE:
+        default:
+            break;
+    }
+    return true;
+}
 
+static bool _run_fsm( fsm_ctx_t *parser_ctx, tokenizer_t *tokenizer, state_id_t fsm_state ) {
     json_token_type_t type;
     do {
         varray_push( parser_ctx->tokens, tokenizer_get_next( tokenizer ) );
@@ -276,7 +316,7 @@ bool json_parse( json_handler_t *handler, json_read_cb_t read_cb, void *read_cb_
     parser_ctx.tokenizer = &tokenizer;
 
     /* runs the JSON FSM */
-    bool success = _run_fsm( &parser_ctx, &tokenizer );
+    bool success = _run_fsm( &parser_ctx, &tokenizer, parser_state_init );
     if( !success ) {
         assert( parser_ctx.error != NULL );
         parser_ctx.handler->error( parser_ctx.handler->ctx, parser_ctx.error, stream.line + 1, stream.column + 1 );

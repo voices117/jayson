@@ -59,6 +59,22 @@ struct buffer {
     } while( 0 )
 
 
+#define ASSERT_PARSE_ERROR( json_cstr, expected_error_msg, expected_line, expected_column ) \
+    do { \
+        struct test_handler_ctx thc = { 0 }; \
+        varray_init( thc.events, 10 ); \
+        json_handler_t handler = DEFAULT_HANDLER( &thc ); \
+        BUFFER( json_cstr ); \
+        ASSERT_FALSE( json_parse( &handler, _read_from_buffer, &buffer ) ); \
+        if( strcmp( expected_error_msg, thc.error_msg ) != 0 ) { \
+            printf( "[ WRONG ERROR ] %s at %d:%d\n", thc.error_msg, thc.error_line, thc.error_column ); \
+            ASSERT_TRUE( false ); \
+        }\
+        ASSERT_EQ( expected_line, thc.error_line ); \
+        ASSERT_EQ( expected_column, thc.error_column ); \
+        varray_release( thc.events ); \
+    } while( 0 )
+
 static ssize_t _stream_cstr_in_cb( struct buffer *b, void *data, size_t data_len ) {
     size_t bytes_to_output = MIN( data_len, b->data_len - ( b->ptr - b->data ) );
     memcpy( data, b->ptr, bytes_to_output );
@@ -215,15 +231,68 @@ TEST( Object ) {
                             event_object_end );
 }
 
-TEST( Error ) {
-    {
-        struct test_handler_ctx thc = { 0 };
-        varray_init( thc.events, 10 );
-        json_handler_t handler = DEFAULT_HANDLER( &thc );
+TEST( Array ) {
+    ASSERT_PARSED_SEQUENCE( "[]",
+                            event_array_start,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[\"string\"]",
+                            event_array_start,
+                            event_string,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[123456]",
+                            event_array_start,
+                            event_integer,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[3.1415]",
+                            event_array_start,
+                            event_fraction,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[false]",
+                            event_array_start,
+                            event_boolean,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[true]",
+                            event_array_start,
+                            event_boolean,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[3.1415, 1024]",
+                            event_array_start,
+                            event_fraction,
+                            event_integer,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[[]]",
+                            event_array_start,
+                            event_array_start,
+                            event_array_end,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[\"array\", [\"child\", []]]",
+                            event_array_start,
+                            event_string,
+                            event_array_start,
+                            event_string,
+                            event_array_start,
+                            event_array_end,
+                            event_array_end,
+                            event_array_end );
+    ASSERT_PARSED_SEQUENCE( "[\"array\", [\"child\", [{}]]]",
+                            event_array_start,
+                            event_string,
+                            event_array_start,
+                            event_string,
+                            event_array_start,
+                            event_object_start,
+                            event_object_end,
+                            event_array_end,
+                            event_array_end,
+                            event_array_end );
+}
 
-        BUFFER( "{}" );
-        ASSERT_TRUE( json_parse( &handler, _read_from_buffer, &buffer ) );
-        ASSERT_EVENT_SEQUENCE( thc.events, event_object_start, event_object_end );
-        varray_release( thc.events );
-    }
+TEST( Error ) {
+    ASSERT_PARSE_ERROR( "{", "Unexpected end of file", 1, 2 );
+    ASSERT_PARSE_ERROR( "{\n", "Unexpected end of file", 2, 1 );
+    ASSERT_PARSE_ERROR( "{\n\n\n", "Unexpected end of file", 4, 1 );
+    ASSERT_PARSE_ERROR( "{\n\n\n\"key\"  123}", "Unexpected token", 4, 12 );
+    ASSERT_PARSE_ERROR( "[,]", "Unexpected token", 1, 3 );
+    ASSERT_PARSE_ERROR( "[123,]", "Unexpected token", 1, 7 );
+    ASSERT_PARSE_ERROR( "[123,456,]", "Unexpected token", 1, 11 );
 }

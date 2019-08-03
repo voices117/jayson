@@ -57,7 +57,6 @@ typedef unsigned char byte;
 typedef struct {
     /** Stream that feeds inpu to the tokenizer. */
     stream_t *stream;
-
     /** varray that stores temporary data. */
     char *buffer;
 } tokenizer_t;
